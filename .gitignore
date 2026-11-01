@@ -1,0 +1,22 @@
+.venv/
+__pycache__/
+backend/data/
+node_modules/
+frontend/dist/
+*.log
+
+# Databases
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Secrets / tokens
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.*
+*token*.json
