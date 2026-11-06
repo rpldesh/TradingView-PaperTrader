@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { DrawingKind, MagnetMode } from 'lightweight-charts-drawing';
 import { fetchCoins, loadState, saveState } from './api';
 import { ChartController, type MarkerSpec, type PriceLineSpec } from './chart';
 import {
-  AccountPanel, BottomPanel, fmtTime, IndicatorMenu, OrderTicket, priceDecimals, QuickTrade, type QuickTradePos, type OrderSize, orderQty,
+  AccountPanel, BottomPanel, DrawingToolbar, fmtTime, IndicatorMenu, OrderTicket, priceDecimals, QuickTrade, type QuickTradePos, type OrderSize, orderQty,
 } from './components';
+import { DrawingSync } from './drawings';
 import { type ClosedBar, MarketFeed, type Mode } from './feed';
 import { DEFAULT_INDICATORS, type IndicatorInstance } from './indicators';
 import {
@@ -24,12 +26,15 @@ interface Settings {
   orderSize: OrderSize; // shared by the order ticket and the one-click buttons
   oneClick: boolean;
   quickTradePos?: QuickTradePos; // undefined = default top-right spot
+  magnet: MagnetMode;
+  keepDrawing: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
   coin: 'BTC', interval: '1d', mode: 'live', cursorEnd: Date.UTC(2024, 0, 1),
   speed: 2, indicators: DEFAULT_INDICATORS, leverage: 10,
   orderSize: { unit: 'usd', usd: '1000', coin: '0.01' }, oneClick: true,
+  magnet: 'off', keepDrawing: false,
 };
 const SPEEDS = [0.5, 1, 2, 5, 10, 20];
 
@@ -47,6 +52,8 @@ export default function App() {
   const [dateInput, setDateInput] = useState('');
   const [pickedPrice, setPickedPrice] = useState<{ price: number; nonce: number } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [drawTool, setDrawTool] = useState<DrawingKind | null>(null);
+  const [drawingsVisible, setDrawingsVisible] = useState(true);
 
   const replayPaper = usePaper('replay');
   const livePaper = usePaper('live');
@@ -54,6 +61,7 @@ export default function App() {
   const chartBox = useRef<HTMLDivElement>(null);
   const legendBox = useRef<HTMLDivElement>(null);
   const chart = useRef<ChartController | null>(null);
+  const drawingSync = useRef<DrawingSync | null>(null);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
   const selectModeRef = useRef(selectMode);
@@ -101,6 +109,16 @@ export default function App() {
       onNeedOlder: () => feed.loadOlder(),
     });
     chart.current = ctl;
+    const sync = new DrawingSync(ctl.drawings);
+    drawingSync.current = sync;
+    ctl.drawings.on('tool', setDrawTool);
+    ctl.drawings.on('visibility', setDrawingsVisible);
+    ctl.drawings.on('textEdit', (d) => {
+      const text = prompt('Text', d.text ?? '');
+      if (text === null) return;
+      if (text.trim()) ctl.drawings.update({ ...d, text });
+      else ctl.drawings.remove(d.id);
+    });
     Promise.all([loadState<Partial<Settings>>('settings'), fetchCoins().catch(() => [])]).then(
       ([saved, coinList]) => {
         setCoins(coinList);
@@ -108,11 +126,15 @@ export default function App() {
         setSettings(s);
         setDateInput(toInputValue(s.cursorEnd));
         ctl.setIndicators(s.indicators);
+        ctl.drawings.setMagnet(s.magnet);
+        ctl.drawings.setStayInDrawingMode(s.keepDrawing);
+        sync.load(s.coin);
         feed.load(s.coin, s.interval, s.mode, s.cursorEnd);
       },
     );
     return () => {
       feed.dispose();
+      sync.dispose();
       ctl.dispose();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -141,6 +163,7 @@ export default function App() {
   const changeMarket = (coin: string, interval: Interval) => {
     if (!settings) return;
     patchSettings({ coin, interval });
+    drawingSync.current?.load(coin);
     feed.load(coin, interval, settings.mode, feed.cursorEnd);
   };
 
@@ -388,6 +411,26 @@ export default function App() {
       )}
 
       <main className="main">
+        <DrawingToolbar
+          tool={drawTool}
+          onTool={(kind) => chart.current?.drawings.setTool(kind)}
+          magnet={settings?.magnet ?? 'off'}
+          onMagnet={(magnet) => {
+            chart.current?.drawings.setMagnet(magnet);
+            patchSettings({ magnet });
+          }}
+          keep={settings?.keepDrawing ?? false}
+          onKeep={(keepDrawing) => {
+            chart.current?.drawings.setStayInDrawingMode(keepDrawing);
+            patchSettings({ keepDrawing });
+          }}
+          visible={drawingsVisible}
+          onVisible={(v) => chart.current?.drawings.setDrawingsVisible(v)}
+          onClearAll={() => {
+            const d = chart.current?.drawings;
+            if (d?.drawings().length && confirm(`Remove all drawings on ${settings?.coin}?`)) d.clear();
+          }}
+        />
         <div className={`chart-wrap ${selectMode ? 'selecting' : ''}`}>
           <div ref={chartBox} className="chart" />
           <div ref={legendBox} className="legend" />

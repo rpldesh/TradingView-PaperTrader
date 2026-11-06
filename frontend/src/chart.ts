@@ -18,6 +18,7 @@ import {
   type UTCTimestamp,
   type WhitespaceData,
 } from 'lightweight-charts';
+import { DrawingManager } from 'lightweight-charts-drawing';
 import { type IndicatorInstance, indicatorDef, indicatorLabel, type Series } from './indicators';
 import type { ChangeKind } from './feed';
 import type { Candle } from './types';
@@ -58,6 +59,8 @@ export class ChartController {
   private markers: ISeriesMarkersPluginApi<Time>;
   private bars: Candle[] = [];
   private altDown = false;
+  private onDrawing = false; // the mouse went down while drawing or on a drawing
+  readonly drawings: DrawingManager;
 
   constructor(container: HTMLElement, private legend: HTMLElement, private cb: ChartCallbacks) {
     this.chart = createChart(container, {
@@ -77,9 +80,11 @@ export class ChartController {
       upColor: UP, downColor: DOWN, borderVisible: false, wickUpColor: UP, wickDownColor: DOWN,
     });
     this.markers = createSeriesMarkers(this.candles, []);
+    this.drawings = new DrawingManager(this.chart, this.candles);
 
     this.chart.subscribeCrosshairMove((p) => this.updateLegend(p));
     this.chart.subscribeClick((p) => {
+      if (this.onDrawing) return; // placing / selecting a drawing is not a chart click
       const time = p.time !== undefined ? (p.time as number) * 1000 : null;
       const price = p.point ? this.candles.coordinateToPrice(p.point.y) : null;
       this.cb.onClick(time, price, this.altDown);
@@ -87,7 +92,11 @@ export class ChartController {
     this.chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
       if (range && range.from < 20 && this.bars.length) this.cb.onNeedOlder();
     });
-    container.addEventListener('mousedown', (e) => (this.altDown = e.altKey), true);
+    // Capture on the container runs before the drawing manager's own pointerdown (on the chart element).
+    container.addEventListener('pointerdown', (e) => {
+      this.altDown = e.altKey;
+      this.onDrawing = this.drawings.tool() !== null || this.drawings.hoveredId() !== null;
+    }, true);
   }
 
   setPrecision(decimals: number) {
@@ -264,6 +273,7 @@ export class ChartController {
   }
 
   dispose() {
+    this.drawings.destroy();
     this.chart.remove();
   }
 }

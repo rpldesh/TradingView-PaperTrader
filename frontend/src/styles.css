@@ -53,6 +53,18 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 
 .main { flex: 1; display: flex; min-height: 0; }
 .chart-wrap { flex: 1; position: relative; min-width: 0; }
+.drawbar {
+  width: 44px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 4px 0; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--border);
+}
+.drawbar-group { display: flex; flex-direction: column; gap: 2px; padding-top: 4px; margin-top: 2px; border-top: 1px solid var(--border); }
+.drawbar button {
+  width: 34px; height: 30px; padding: 0; border-color: transparent; background: none;
+  font-size: 15px; line-height: 1; color: var(--text);
+}
+.drawbar button:hover:not(:disabled) { background: var(--panel-2); border-color: transparent; }
+.drawbar button.active { background: var(--accent); color: #fff; }
+.drawbar sup { font-size: 8px; }
 .chart-wrap.selecting { cursor: crosshair; }
 .chart { position: absolute; inset: 0; }
 .legend {

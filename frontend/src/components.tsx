@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import type { DrawingKind, MagnetMode } from 'lightweight-charts-drawing';
+import { DRAWING_TOOLS } from './drawings';
 import {
   type IndicatorInstance, INDICATORS, indicatorDef, indicatorLabel, newIndicator,
 } from './indicators';
@@ -233,7 +235,8 @@ export function AccountPanel({ state, label, onReset }: {
   const eq = equity(state);
   const used = usedMargin(state);
   const st = stats(state);
-  const totalPnl = eq - state.startBalance;
+  // realized only: moves when a fill closes size, not with the mark price
+  const totalPnl = st.realized - st.fees;
   return (
     <div className="panel account">
       <div className="panel-title">
@@ -245,7 +248,7 @@ export function AccountPanel({ state, label, onReset }: {
       </div>
       <dl>
         <dt>Equity</dt><dd>{fmtUsd(eq)}</dd>
-        <dt>Total PnL</dt>
+        <dt>Realized PnL</dt>
         <dd className={pnlClass(totalPnl)}>
           {signed(totalPnl)} ({((totalPnl / state.startBalance) * 100).toFixed(2)}%)
         </dd>
@@ -426,5 +429,45 @@ export function IndicatorMenu({ indicators, onChange, onClose }: {
         })}
       </div>
     </div>
+  );
+}
+
+const MAGNET_NEXT: Record<MagnetMode, MagnetMode> = { off: 'weak', weak: 'strong', strong: 'off' };
+
+/** TradingView-style vertical drawing bar on the left of the chart. */
+export function DrawingToolbar({ tool, onTool, magnet, onMagnet, keep, onKeep, visible, onVisible, onClearAll }: {
+  tool: DrawingKind | null;
+  onTool(kind: DrawingKind | null): void;
+  magnet: MagnetMode;
+  onMagnet(mode: MagnetMode): void;
+  keep: boolean;
+  onKeep(on: boolean): void;
+  visible: boolean;
+  onVisible(on: boolean): void;
+  onClearAll(): void;
+}) {
+  return (
+    <nav className="drawbar">
+      <button className={tool === null ? 'active' : ''} onClick={() => onTool(null)} title="Cursor (Esc)">⌖</button>
+      {DRAWING_TOOLS.map((group, i) => (
+        <div key={i} className="drawbar-group">
+          {group.map((t) => (
+            <button key={t.kind} className={tool === t.kind ? 'active' : ''} title={t.label}
+                    onClick={() => onTool(tool === t.kind ? null : t.kind)}>{t.icon}</button>
+          ))}
+        </div>
+      ))}
+      <div className="drawbar-group">
+        <button className={magnet !== 'off' ? 'active' : ''} onClick={() => onMagnet(MAGNET_NEXT[magnet])}
+                title={`Magnet: ${magnet} (snap to OHLC; hold Ctrl to invert)`}>
+          🧲{magnet === 'strong' && <sup>S</sup>}
+        </button>
+        <button className={keep ? 'active' : ''} onClick={() => onKeep(!keep)}
+                title="Keep drawing (tool stays selected after placing)">🔒</button>
+        <button className={!visible ? 'active' : ''} onClick={() => onVisible(!visible)}
+                title={visible ? 'Hide all drawings' : 'Show all drawings'}>{visible ? '👁' : '🚫'}</button>
+        <button onClick={onClearAll} title="Remove all drawings on this coin">🗑</button>
+      </div>
+    </nav>
   );
 }
